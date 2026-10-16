@@ -13,10 +13,11 @@ subtotal, категоріальну знижку, знижку за купон�
 ```
 Lab_01/
   README.md          опис, як запускати
+  .github/workflows  (у корені репозиторію) GitHub Actions: ruff, black, mypy, pytest
   core.py            чисте ядро (без I/O, глобалів і мутацій)
   app.py             оболонка побічних ефектів: читання cart.json, час, print
   cart.json          приклад кошика
-  tests/conftest.py  фікстура sample_cart
+  conftest.py        фікстура sample_cart
   tests/test_core.py pytest-тести
   requirements.txt   pytest, mypy, black, ruff
   pyproject.toml     налаштування black / ruff / mypy / pytest

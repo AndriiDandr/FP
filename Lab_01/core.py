@@ -1,3 +1,10 @@
+"""Чисте ядро розрахунку кошика покупця (варіант 4).
+
+Усі функції модуля чисті: не виконують I/O, не використовують глобальний стан
+і не змінюють вхідні дані — замість цього повертають нові об'єкти.
+Політики фільтрації, знижки, купона та податку передаються як ``Callable``.
+"""
+
 from collections.abc import Callable, Iterable, Mapping
 from typing import TypedDict, TypeVar
 
@@ -7,6 +14,8 @@ C = TypeVar("C")
 
 
 class Item(TypedDict):
+    """Товар у кошику."""
+
     name: str
     price: float
     qty: int
@@ -14,6 +23,8 @@ class Item(TypedDict):
 
 
 class PricedItem(TypedDict):
+    """Новий запис позиції кошика з розрахованими сумами."""
+
     name: str
     price: float
     qty: int
@@ -24,6 +35,8 @@ class PricedItem(TypedDict):
 
 
 class Receipt(TypedDict):
+    """Результат обробки кошика: нові позиції та підсумки."""
+
     items: list[PricedItem]
     subtotal: float
     category_discount: float
@@ -43,26 +56,32 @@ CartProcessor = Callable[[Iterable[Item]], Receipt]
 
 
 def compose(f: Callable[[B], C], g: Callable[[A], B]) -> Callable[[A], C]:
+    """Повертає композицію функцій: x -> f(g(x))."""
     return lambda x: f(g(x))
 
 
 def identity(x: A) -> A:
+    """Повертає аргумент без змін (нейтральна політика)."""
     return x
 
 
 def make_multiplier(k: int) -> Callable[[int], int]:
+    """Фабрика функцій, що множать число на k."""
     return lambda x: x * k
 
 
 def line_total(item: Item) -> float:
+    """Вартість позиції: ціна × кількість."""
     return item["price"] * item["qty"]
 
 
 def cart_subtotal(items: Iterable[Item]) -> float:
+    """Сума всіх позицій кошика без знижок і податків."""
     return sum(line_total(it) for it in items)
 
 
 def price_item(item: Item, discount_rate: float) -> PricedItem:
+    """Створює новий запис позиції з сумою до і після знижки."""
     total = line_total(item)
     return {
         "name": item["name"],
@@ -76,35 +95,49 @@ def price_item(item: Item, discount_rate: float) -> PricedItem:
 
 
 def with_qty(item: Item, qty: int) -> Item:
+    """Повертає копію товару з новою кількістю."""
     return {**item, "qty": qty}
 
 
 def without_category(items: Iterable[Item], category: str) -> list[Item]:
+    """Повертає новий список без товарів заданої категорії."""
     return [it for it in items if it["category"] != category]
 
 
 def scale_prices(items: Iterable[Item], k: float) -> list[Item]:
+    """Повертає новий список товарів з ціною, помноженою на k."""
     return [{**it, "price": it["price"] * k} for it in items]
 
 
 def make_category_discount(rates: Mapping[str, float]) -> CategoryDiscountFn:
+    """Фабрика політики знижки: ставка залежить від категорії товару."""
     frozen = dict(rates)
     return lambda item: frozen.get(item["category"], 0.0)
 
 
 def make_percent_coupon(percent: float) -> CouponFn:
+    """Фабрика купона на відсоток від суми."""
     return lambda amount: amount * (1 - percent / 100)
 
 
 def make_fixed_coupon(value: float, min_amount: float = 0.0) -> CouponFn:
-    return lambda amount: max(amount - value, 0.0) if amount >= min_amount else amount
+    """Фабрика купона на фіксовану суму, що діє від min_amount."""
+
+    def apply(amount: float) -> float:
+        if amount < min_amount:
+            return amount
+        return max(amount - value, 0.0)
+
+    return apply
 
 
 def make_vat(rate: float) -> TaxFn:
+    """Фабрика політики ПДВ із заданою ставкою."""
     return lambda amount: amount * (1 + rate)
 
 
 def accept_positive_qty(item: Item) -> bool:
+    """Фільтр: беремо лише товари з додатною кількістю і невідʼємною ціною."""
     return item["qty"] > 0 and item["price"] >= 0
 
 
@@ -115,6 +148,8 @@ def make_cart_processor(
     apply_coupon: CouponFn,
     apply_tax: TaxFn,
 ) -> CartProcessor:
+    """Функція вищого порядку: збирає обробник кошика з переданих політик."""
+
     def process(items: Iterable[Item]) -> Receipt:
         priced = [price_item(it, category_discount(it)) for it in items if accept(it)]
         subtotal = sum(p["line_total"] for p in priced)
@@ -142,6 +177,7 @@ def process_cart_pure(
     coupon_percent: float,
     vat_rate: float,
 ) -> Receipt:
+    """Розраховує кошик зі стандартними політиками; усі параметри явні."""
     processor = make_cart_processor(
         accept=accept_positive_qty,
         category_discount=make_category_discount(category_rates),
@@ -152,4 +188,5 @@ def process_cart_pure(
 
 
 def stamp_total(total: float, now: NowFn) -> tuple[float, float]:
+    """Додає до суми час розрахунку; джерело часу передається ззовні."""
     return total, now()

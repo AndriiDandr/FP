@@ -1,15 +1,11 @@
-[tool.black]
-line-length = 100
-
-[tool.ruff]
-line-length = 100
-
 [tool.ruff.lint]
-ignore = ["E731"]
+extend-select = ["I", "B", "UP", "D"]
+ignore = ["D203", "D213"]
 
 [tool.mypy]
 strict = true
-files = ["core.py", "app.py", "tests"]
+files = ["core.py", "app.py", "conftest.py", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]

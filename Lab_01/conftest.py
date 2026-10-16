@@ -1,15 +1,13 @@
-import sys
-from pathlib import Path
+"""Спільні фікстури для тестів."""
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core import Item
 
 
 @pytest.fixture
 def sample_cart() -> list[Item]:
+    """Тестовий кошик: три звичайні товари і один з нульовою кількістю."""
     return [
         {"name": "Phone", "price": 1000.0, "qty": 1, "category": "electronics"},
         {"name": "Book", "price": 200.0, "qty": 2, "category": "books"},

@@ -1,3 +1,8 @@
+"""Оболонка побічних ефектів: читання кошика, час і друк звіту.
+
+Усі обчислення делегуються чистому ядру ``core``; тут лише I/O.
+"""
+
 import json
 import sys
 import time
@@ -20,39 +25,47 @@ from core import (
 CATEGORY_RATES = {"electronics": 0.05, "books": 0.10, "food": 0.0, "clothes": 0.15}
 COUPON_PERCENT = 10
 VAT_RATE = 0.20
+SEPARATOR = "-" * 79
 
 
 def load_cart(path: Path) -> list[Item]:
+    """Читає кошик із JSON-файлу."""
     with path.open(encoding="utf-8") as f:
         data: list[Item] = json.load(f)
     return data
 
 
 def render_report(receipt: Receipt, stamped_at: float) -> str:
+    """Формує текст чека з готового результату (без друку)."""
     header = (
         f"{'Товар':<22}{'Категорія':<13}{'Ціна':>9}{'К-сть':>7}"
         f"{'Сума':>10}{'Знижка':>8}{'Після':>10}"
     )
-    lines = [header, "-" * 79]
-    for p in receipt["items"]:
-        lines.append(
-            f"{p['name']:<22}{p['category']:<13}{p['price']:>9.2f}{p['qty']:>7}"
-            f"{p['line_total']:>10.2f}{p['discount_rate'] * 100:>7.0f}%"
-            f"{p['discounted_total']:>10.2f}"
-        )
-    lines += [
-        "-" * 79,
+    rows = [
+        f"{p['name']:<22}{p['category']:<13}{p['price']:>9.2f}{p['qty']:>7}"
+        f"{p['line_total']:>10.2f}{p['discount_rate'] * 100:>7.0f}%"
+        f"{p['discounted_total']:>10.2f}"
+        for p in receipt["items"]
+    ]
+    stamp = datetime.fromtimestamp(stamped_at).astimezone()
+    totals = [
         f"{'Subtotal:':<24}{receipt['subtotal']:>12.2f}",
         f"{'Категоріальна знижка:':<24}{-receipt['category_discount']:>12.2f}",
         f"{'Купон:':<24}{-receipt['coupon_discount']:>12.2f}",
         f"{'ПДВ:':<24}{receipt['vat']:>+12.2f}",
         f"{'До сплати:':<24}{receipt['total']:>12.2f}",
-        f"Час розрахунку: {datetime.fromtimestamp(stamped_at):%Y-%m-%d %H:%M:%S}",
+        f"Час розрахунку: {stamp:%Y-%m-%d %H:%M:%S}",
     ]
-    return "\n".join(lines)
+    return "\n".join([header, SEPARATOR, *rows, SEPARATOR, *totals])
+
+
+def accept_non_food(item: Item) -> bool:
+    """Альтернативний фільтр: усі товари, крім продуктів харчування."""
+    return accept_positive_qty(item) and item["category"] != "food"
 
 
 def run(cart: list[Item]) -> None:
+    """Рахує кошик за двома наборами політик і друкує чеки."""
     processor = make_cart_processor(
         accept=accept_positive_qty,
         category_discount=make_category_discount(CATEGORY_RATES),
@@ -64,21 +77,29 @@ def run(cart: list[Item]) -> None:
     print("=== Кошик: знижка 10% за купоном, ПДВ 20% ===")
     print(render_report(receipt, stamped_at))
 
-    combo_coupon = compose(make_fixed_coupon(100, min_amount=1000), make_percent_coupon(5))
+    combo_coupon = compose(
+        make_fixed_coupon(100, min_amount=1000),
+        make_percent_coupon(5),
+    )
     alt = make_cart_processor(
-        accept=lambda it: accept_positive_qty(it) and it["category"] != "food",
+        accept=accept_non_food,
         category_discount=make_category_discount({"electronics": 0.10}),
         apply_coupon=combo_coupon,
         apply_tax=make_vat(VAT_RATE),
     )
-    alt_receipt = alt(cart)
     print()
     print("=== Інша політика: без food, купон 5% + 100 грн від 1000 грн ===")
-    print(render_report(alt_receipt, stamped_at))
+    print(render_report(alt(cart), stamped_at))
+
+
+def main() -> None:
+    """Точка входу: шлях до кошика можна передати аргументом."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    default_path = Path(__file__).with_name("cart.json")
+    cart_path = Path(sys.argv[1]) if len(sys.argv) > 1 else default_path
+    run(load_cart(cart_path))
 
 
 if __name__ == "__main__":
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    cart_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).with_name("cart.json")
-    run(load_cart(cart_path))
+    main()
