@@ -5,8 +5,8 @@
 Політики фільтрації, знижки, купона та податку передаються як ``Callable``.
 """
 
-from collections.abc import Callable, Iterable, Mapping
-from typing import TypedDict, TypeVar
+from collections.abc import Iterable, Mapping
+from typing import Callable, TypedDict, TypeVar
 
 A = TypeVar("A")
 B = TypeVar("B")

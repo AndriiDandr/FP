@@ -1,12 +1,12 @@
 """Тести чистого ядра: референтна прозорість, відсутність мутацій, політики."""
 
 from copy import deepcopy
+from typing import Callable
 
 import pytest
 
 from core import (
     CartProcessor,
-    CouponFn,
     Item,
     TaxFn,
     cart_subtotal,
@@ -88,11 +88,12 @@ def test_callable_policies(sample_cart: list[Item]) -> None:
     def apply_tax(s: float) -> float:
         return s * 1.2
 
-    coupon: CouponFn = apply_coupon
+    coupon: Callable[[float], float] = apply_coupon
     tax: TaxFn = apply_tax
+    discount: Callable[[Item], float] = make_category_discount({"books": 0.5})
     processor = make_cart_processor(
         accept=lambda it: it["qty"] > 0 and it["category"] != "food",
-        category_discount=lambda it: 0.5 if it["category"] == "books" else 0.0,
+        category_discount=discount,
         apply_coupon=coupon,
         apply_tax=tax,
     )
