@@ -187,6 +187,74 @@ def process_cart_pure(
     return processor(items)
 
 
+class OrderItem(TypedDict):
+    """Позиція замовлення з базового завдання."""
+
+    price: float
+    qty: int
+
+
+class Order(TypedDict, total=False):
+    """Замовлення з базового завдання; поле total з'являється в результаті."""
+
+    id: int
+    items: list[OrderItem]
+    paid: bool
+    total: float
+
+
+FilterFn = Callable[[float], bool]
+DiscountFn = Callable[[float], float]
+OrdersProcessor = Callable[[Iterable[Order]], dict[str, object]]
+
+
+def order_subtotal(order: Order) -> float:
+    """Сума замовлення без знижки і податку."""
+    return sum(it["price"] * it["qty"] for it in order["items"])
+
+
+def with_total(order: Order, total: float) -> Order:
+    """Повертає НОВЕ замовлення з полем total (вхідне не змінюється)."""
+    return {**order, "total": total}
+
+
+def make_processor(
+    *,
+    accept: FilterFn,
+    apply_discount: DiscountFn,
+    apply_tax: TaxFn,
+) -> OrdersProcessor:
+    """Функція вищого порядку для замовлень: політики передаються як Callable."""
+
+    def process(orders: Iterable[Order]) -> dict[str, object]:
+        paid = [o for o in orders if o["paid"]]
+        accepted = [o for o in paid if accept(order_subtotal(o))]
+        qualified = [
+            with_total(o, apply_tax(apply_discount(order_subtotal(o))))
+            for o in accepted
+        ]
+        revenue = sum(o["total"] for o in qualified)
+        return {"count": len(qualified), "revenue": revenue, "orders": qualified}
+
+    return process
+
+
+def process_orders_pure(
+    orders: Iterable[Order],
+    *,
+    min_total: float,
+    discount: float,
+    tax_rate: float,
+) -> dict[str, object]:
+    """Чиста версія стартового process_orders: усі параметри передаються явно."""
+    processor = make_processor(
+        accept=lambda s: s >= min_total,
+        apply_discount=lambda s: s * (1 - discount),
+        apply_tax=make_vat(tax_rate),
+    )
+    return processor(orders)
+
+
 def stamp_total(total: float, now: NowFn) -> tuple[float, float]:
     """Додає до суми час розрахунку; джерело часу передається ззовні."""
     return total, now()

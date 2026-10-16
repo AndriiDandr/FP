@@ -17,8 +17,9 @@ Lab_01/
   core.py            чисте ядро (без I/O, глобалів і мутацій)
   app.py             оболонка побічних ефектів: читання cart.json, час, print
   cart.json          приклад кошика
-  conftest.py        фікстура sample_cart
-  tests/test_core.py pytest-тести чистого ядра
+  conftest.py        фікстури sample_cart і sample_orders
+  tests/test_core.py pytest-тести чистого ядра (кошик, варіант 4)
+  tests/test_orders.py мінімальні тести з умови (базове завдання, замовлення)
   tests/test_app.py  pytest-тести оболонки I/O
   requirements.txt   pytest, mypy, black, ruff
   pyproject.toml     налаштування black / ruff / mypy / pytest
@@ -61,4 +62,4 @@ python -m black --check .
 python -m ruff check .
 ```
 
-Результат: 16 тестів пройдено (покриття ~99%), mypy (strict) — без помилок, black і ruff — чисто.
+Результат: 21 тест пройдено (покриття ~99%), mypy (strict) — без помилок, black і ruff — чисто.
