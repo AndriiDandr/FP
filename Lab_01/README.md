@@ -11,7 +11,7 @@ subtotal, категоріальну знижку, знижку за купон�
 ## Структура
 
 ```
-lab1/
+Lab_01/
   README.md          опис, як запускати
   core.py            чисте ядро (без I/O, глобалів і мутацій)
   app.py             оболонка побічних ефектів: читання cart.json, час, print
@@ -20,8 +20,7 @@ lab1/
   tests/test_core.py pytest-тести
   requirements.txt   pytest, mypy, black, ruff
   pyproject.toml     налаштування black / ruff / mypy / pytest
-  Lab_01.docx        завдання
-  Звіт_Лаб1_Данилюк.docx  звіт
+  Lab_01.docx        звіт
 ```
 
 ## Чисте ядро (`core.py`)
