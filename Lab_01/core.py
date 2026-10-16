@@ -6,11 +6,8 @@
 """
 
 from collections.abc import Iterable, Mapping
-from typing import Callable, TypedDict, TypeVar
-
-A = TypeVar("A")
-B = TypeVar("B")
-C = TypeVar("C")
+from functools import reduce
+from typing import Callable, TypedDict
 
 
 class Item(TypedDict):
@@ -55,12 +52,12 @@ NowFn = Callable[[], float]
 CartProcessor = Callable[[Iterable[Item]], Receipt]
 
 
-def compose(f: Callable[[B], C], g: Callable[[A], B]) -> Callable[[A], C]:
+def compose[A, B, C](f: Callable[[B], C], g: Callable[[A], B]) -> Callable[[A], C]:
     """Повертає композицію функцій: x -> f(g(x))."""
     return lambda x: f(g(x))
 
 
-def identity(x: A) -> A:
+def identity[A](x: A) -> A:
     """Повертає аргумент без змін (нейтральна політика)."""
     return x
 
@@ -77,7 +74,7 @@ def line_total(item: Item) -> float:
 
 def cart_subtotal(items: Iterable[Item]) -> float:
     """Сума всіх позицій кошика без знижок і податків."""
-    return sum(line_total(it) for it in items)
+    return reduce(lambda acc, it: acc + line_total(it), items, 0.0)
 
 
 def price_item(item: Item, discount_rate: float) -> PricedItem:
@@ -99,14 +96,24 @@ def with_qty(item: Item, qty: int) -> Item:
     return {**item, "qty": qty}
 
 
+def with_price(item: Item, price: float) -> Item:
+    """Повертає копію товару з новою ціною."""
+    return {**item, "price": price}
+
+
 def without_category(items: Iterable[Item], category: str) -> list[Item]:
     """Повертає новий список без товарів заданої категорії."""
-    return [it for it in items if it["category"] != category]
+    return list(filter(lambda it: it["category"] != category, items))
 
 
 def scale_prices(items: Iterable[Item], k: float) -> list[Item]:
     """Повертає новий список товарів з ціною, помноженою на k."""
-    return [{**it, "price": it["price"] * k} for it in items]
+
+    def scaled(it: Item) -> Item:
+        """Копія товару з помноженою ціною."""
+        return with_price(it, it["price"] * k)
+
+    return list(map(scaled, items))
 
 
 def make_category_discount(rates: Mapping[str, float]) -> CategoryDiscountFn:

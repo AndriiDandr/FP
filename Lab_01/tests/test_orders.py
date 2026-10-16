@@ -1,9 +1,13 @@
 """Мінімальні тести з умови лабораторної для базового завдання (замовлення)."""
 
+import sys
 from copy import deepcopy
+from pathlib import Path
 from typing import Callable
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core import (
     Order,
@@ -12,6 +16,21 @@ from core import (
     process_orders_pure,
     with_total,
 )
+
+
+@pytest.fixture
+def sample_orders() -> list[Order]:
+    """Тестові замовлення для базового завдання."""
+    return [
+        {"id": 1, "items": [{"price": 60.0, "qty": 2}], "paid": True},
+        {"id": 2, "items": [{"price": 30.0, "qty": 1}], "paid": True},
+        {"id": 3, "items": [{"price": 500.0, "qty": 1}], "paid": False},
+        {
+            "id": 4,
+            "items": [{"price": 40.0, "qty": 1}, {"price": 25.0, "qty": 2}],
+            "paid": True,
+        },
+    ]
 
 
 def test_referential_transparency(sample_orders: list[Order]) -> None:

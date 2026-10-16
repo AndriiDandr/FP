@@ -1,14 +1,28 @@
 """Тести оболонки I/O: читання кошика, формування чека, запуск."""
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import accept_non_food, load_cart, main, render_report, run
 from core import Item, process_cart_pure
 
 STAMP = 1_700_000_000.0
+
+
+@pytest.fixture
+def sample_cart() -> list[Item]:
+    """Тестовий кошик: три звичайні товари і один з нульовою кількістю."""
+    return [
+        {"name": "Phone", "price": 1000.0, "qty": 1, "category": "electronics"},
+        {"name": "Book", "price": 200.0, "qty": 2, "category": "books"},
+        {"name": "Bread", "price": 30.0, "qty": 5, "category": "food"},
+        {"name": "Ghost", "price": 99.0, "qty": 0, "category": "books"},
+    ]
 
 
 def test_load_cart(tmp_path: Path, sample_cart: list[Item]) -> None:
