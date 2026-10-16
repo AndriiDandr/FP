@@ -1,0 +1,15 @@
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+ignore = ["E731"]
+
+[tool.mypy]
+strict = true
+files = ["core.py", "app.py", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
