@@ -22,11 +22,6 @@ from core import (
     stamp_total,
 )
 
-CATEGORY_RATES = {"electronics": 0.05, "books": 0.10, "food": 0.0, "clothes": 0.15}
-COUPON_PERCENT = 10
-VAT_RATE = 0.20
-SEPARATOR = "-" * 79
-
 
 def load_cart(path: Path) -> list[Item]:
     """Читає кошик із JSON-файлу."""
@@ -56,7 +51,8 @@ def render_report(receipt: Receipt, stamped_at: float) -> str:
         f"{'До сплати:':<24}{receipt['total']:>12.2f}",
         f"Час розрахунку: {stamp:%Y-%m-%d %H:%M:%S}",
     ]
-    return "\n".join([header, SEPARATOR, *rows, SEPARATOR, *totals])
+    separator = "-" * 79
+    return "\n".join([header, separator, *rows, separator, *totals])
 
 
 def accept_non_food(item: Item) -> bool:
@@ -64,17 +60,23 @@ def accept_non_food(item: Item) -> bool:
     return accept_positive_qty(item) and item["category"] != "food"
 
 
-def run(cart: list[Item]) -> None:
+def run(
+    cart: list[Item],
+    *,
+    category_rates: dict[str, float],
+    coupon_percent: float,
+    vat_rate: float,
+) -> None:
     """Рахує кошик за двома наборами політик і друкує чеки."""
     processor = make_cart_processor(
         accept=accept_positive_qty,
-        category_discount=make_category_discount(CATEGORY_RATES),
-        apply_coupon=make_percent_coupon(COUPON_PERCENT),
-        apply_tax=make_vat(VAT_RATE),
+        category_discount=make_category_discount(category_rates),
+        apply_coupon=make_percent_coupon(coupon_percent),
+        apply_tax=make_vat(vat_rate),
     )
     receipt = processor(cart)
     _, stamped_at = stamp_total(receipt["total"], time.time)
-    print("=== Кошик: знижка 10% за купоном, ПДВ 20% ===")
+    print(f"=== Кошик: купон {coupon_percent:g}%, ПДВ {vat_rate:.0%} ===")
     print(render_report(receipt, stamped_at))
 
     combo_coupon = compose(
@@ -85,7 +87,7 @@ def run(cart: list[Item]) -> None:
         accept=accept_non_food,
         category_discount=make_category_discount({"electronics": 0.10}),
         apply_coupon=combo_coupon,
-        apply_tax=make_vat(VAT_RATE),
+        apply_tax=make_vat(vat_rate),
     )
     print()
     print("=== Інша політика: без food, купон 5% + 100 грн від 1000 грн ===")
@@ -98,7 +100,12 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8")
     default_path = Path(__file__).with_name("cart.json")
     cart_path = Path(sys.argv[1]) if len(sys.argv) > 1 else default_path
-    run(load_cart(cart_path))
+    run(
+        load_cart(cart_path),
+        category_rates={"electronics": 0.05, "books": 0.10, "clothes": 0.15},
+        coupon_percent=10,
+        vat_rate=0.20,
+    )
 
 
 if __name__ == "__main__":

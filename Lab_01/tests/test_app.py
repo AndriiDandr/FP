@@ -41,7 +41,7 @@ def test_run_prints_report(
     sample_cart: list[Item], capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Оболонка друкує обидва чеки."""
-    run(sample_cart)
+    run(sample_cart, category_rates={"books": 0.1}, coupon_percent=10, vat_rate=0.2)
     out = capsys.readouterr().out
     assert out.count("До сплати:") == 2
 

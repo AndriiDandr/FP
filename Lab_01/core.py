@@ -124,6 +124,7 @@ def make_fixed_coupon(value: float, min_amount: float = 0.0) -> CouponFn:
     """Фабрика купона на фіксовану суму, що діє від min_amount."""
 
     def apply(amount: float) -> float:
+        """Віднімає value, якщо сума не менша за min_amount."""
         if amount < min_amount:
             return amount
         return max(amount - value, 0.0)
@@ -151,6 +152,7 @@ def make_cart_processor(
     """Функція вищого порядку: збирає обробник кошика з переданих політик."""
 
     def process(items: Iterable[Item]) -> Receipt:
+        """Повертає новий чек для кошика, не змінюючи вхідні товари."""
         priced = [price_item(it, category_discount(it)) for it in items if accept(it)]
         subtotal = sum(p["line_total"] for p in priced)
         after_category = sum(p["discounted_total"] for p in priced)
@@ -227,6 +229,7 @@ def make_processor(
     """Функція вищого порядку для замовлень: політики передаються як Callable."""
 
     def process(orders: Iterable[Order]) -> dict[str, object]:
+        """Відбирає оплачені замовлення і рахує нові записи з total."""
         paid = [o for o in orders if o["paid"]]
         accepted = [o for o in paid if accept(order_subtotal(o))]
         qualified = [
