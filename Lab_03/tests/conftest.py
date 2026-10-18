@@ -1,3 +1,5 @@
+"""Спільні фікстури тестів."""
+
 import sys
 from pathlib import Path
 
@@ -12,9 +14,11 @@ from model import StockRecord
 
 @pytest.fixture
 def record() -> StockRecord:
+    """Один запис складу."""
     return build_record()
 
 
 @pytest.fixture
 def records() -> tuple[StockRecord, ...]:
+    """Кортеж із трьох записів складу."""
     return build_records()

@@ -1,7 +1,10 @@
+"""Фабрики тестових даних (deepcopy не працює з MappingProxyType)."""
+
 from model import StockRecord, make_record
 
 
 def build_record() -> StockRecord:
+    """Будує новий запис, рівний фікстурі record."""
     return make_record(
         sku="LAP-01",
         name="Laptop",
@@ -15,6 +18,7 @@ def build_record() -> StockRecord:
 
 
 def build_records() -> tuple[StockRecord, ...]:
+    """Будує новий кортеж, рівний фікстурі records."""
     return (
         build_record(),
         make_record(

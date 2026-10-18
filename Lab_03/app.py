@@ -1,3 +1,5 @@
+"""Оболонка I/O: читає склад з JSON, виконує pure-оновлення і друкує таблиці."""
+
 import json
 import sys
 from collections.abc import Sequence
@@ -22,11 +24,13 @@ from model import StockRecord, make_record
 
 
 def load_records(path: Path) -> tuple[StockRecord, ...]:
+    """Читає записи складу з JSON-файлу і робить їх незмінними."""
     raw = json.loads(path.read_text(encoding="utf-8"))
     return tuple(make_record(**row) for row in raw)
 
 
 def format_table(records: Sequence[StockRecord]) -> str:
+    """Формує текст таблиці складу (без друку)."""
     header = f"{'SKU':<8}{'Товар':<17}{'Ціна':>10}{'К-сть':>7}{'Вартість':>12}  Теги"
     rows = [
         f"{r.product.sku:<8}{r.product.name:<17}{r.product.price:>10.2f}"
@@ -37,6 +41,7 @@ def format_table(records: Sequence[StockRecord]) -> str:
 
 
 def main() -> None:
+    """Точка входу: демонструє pure-оновлення складу."""
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     path = (
