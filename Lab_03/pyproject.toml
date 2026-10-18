@@ -4,8 +4,7 @@ ignore = ["D203", "D213", "D400", "D415"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = [".", "tests"]
-addopts = "--benchmark-columns=min,mean,median,rounds --benchmark-sort=name"
+pythonpath = ["."]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "core", "factories", "model", "mutable_model"]
+known-first-party = ["app", "core", "model", "mutable_model"]
