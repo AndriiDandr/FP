@@ -1,0 +1,10 @@
+[tool.ruff.lint]
+extend-select = ["I", "B", "UP", "C4", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
+addopts = "--benchmark-columns=min,mean,median,rounds --benchmark-sort=name"
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "core", "factories", "model", "mutable_model"]

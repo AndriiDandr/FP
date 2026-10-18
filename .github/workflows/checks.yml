@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lab: [Lab_01]
+        lab: [Lab_01, Lab_03]
     defaults:
       run:
         working-directory: ${{ matrix.lab }}
