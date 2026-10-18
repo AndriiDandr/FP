@@ -1,215 +1,127 @@
-"""Тести незмінності: немутація, read-only, хешованість, коректність нових копій."""
-
-from collections.abc import Callable
 from dataclasses import FrozenInstanceError
-from types import MappingProxyType
 from typing import Any
 
 import pytest
-
 from core import (
     add_tag,
-    apply_price_rule,
     change_price,
-    index_by_sku,
-    make_category_discount,
-    remove_tag,
-    reorder_cost,
+    freeze,
+    index_by_record,
     restock,
-    ship,
-    supplier_name,
-    to_reorder,
-    top_valuable,
-    total_value,
-    update_supplier,
-    with_tag,
+    stock_value,
+    with_supplier,
 )
-from model import Movement, Product, StockRecord, freeze, make_meta
+from hypothesis import given
+from hypothesis import strategies as st
+from model import Product, StockRecord, make_meta, make_record
 
 
-def test_model_uses_immutable_collections(record: StockRecord) -> None:
-    """Модель зберігає колекції у tuple, frozenset і MappingProxyType."""
-    assert isinstance(record.movements, tuple)
-    assert isinstance(record.product.tags, frozenset)
-    assert isinstance(record.supplier, MappingProxyType)
+def test_restock_returns_new_record(record: StockRecord) -> None:
+    before = (record.batches, record.tags, dict(record.supplier))
+    new = restock(record, 5)
+    assert (record.batches, record.tags, dict(record.supplier)) == before
+    assert new is not record
+    assert new.batches == (4, 6, 5)
+    assert new.quantity() == record.quantity() + 5
 
 
-def test_frozen_dataclass_rejects_assignment(record: StockRecord) -> None:
-    """Frozen dataclass забороняє змінювати поля."""
+def test_change_price_returns_new_record(record: StockRecord) -> None:
+    new = change_price(record, 900.0)
+    assert record.product.price == 1_000.0
+    assert new.product.price == 900.0
+    assert new.product is not record.product
+    assert new.batches is record.batches
+
+
+def test_add_tag_returns_new_record(record: StockRecord) -> None:
+    new = add_tag(record, "promo")
+    assert record.tags == frozenset({"new"})
+    assert new.tags == frozenset({"new", "promo"})
+    assert new.deactivate().active is False and record.active is True
+
+
+def test_frozen_fields_cannot_be_assigned(record: StockRecord) -> None:
     target: Any = record
     with pytest.raises(FrozenInstanceError):
-        target.quantity = 100
+        target.id = 2
     with pytest.raises(FrozenInstanceError):
         target.product.price = 1.0
 
 
-def test_slots_forbid_new_attributes(record: StockRecord) -> None:
-    """slots=True не дозволяє додавати нові атрибути."""
-    target: Any = record
-    with pytest.raises((AttributeError, TypeError)):
-        target.extra = 1
-
-
-def test_no_mutation_when_restocking(
-    record: StockRecord, fresh_record: Callable[[], StockRecord]
-) -> None:
-    """Поповнення повертає НОВИЙ запис, оригінал не змінюється."""
-    snapshot = fresh_record()
-    new_record = restock(record, 6)
-    assert record == snapshot
-    assert new_record is not record
-    assert new_record.quantity == 10
-    assert new_record.movements == (Movement(6, "restock"),)
-    assert record.movements == ()
-    assert new_record.stock_value() == record.stock_value() + 6000.0
-
-
-def test_ship_and_validation(record: StockRecord) -> None:
-    """Відвантаження зменшує залишок, некоректні значення відхиляються."""
-    shipped = ship(record, 3)
-    assert shipped.quantity == 1
-    assert shipped.movements[-1] == Movement(-3, "ship")
-    assert record.quantity == 4
-    with pytest.raises(ValueError):
-        ship(record, 10)
-    with pytest.raises(ValueError):
-        restock(record, 0)
-
-
-def test_change_price_creates_new_product(record: StockRecord) -> None:
-    """Зміна ціни створює новий Product, решта полів спільна."""
-    updated = change_price(record, 900.0)
-    assert updated.product.price == 900.0
-    assert record.product.price == 1000.0
-    assert updated.product is not record.product
-    assert updated.supplier is record.supplier
-    with pytest.raises(ValueError):
-        change_price(record, -1.0)
-
-
-def test_tags_are_updated_with_frozenset_operations(record: StockRecord) -> None:
-    """Теги оновлюються операціями frozenset."""
-    tagged = add_tag(record, "promo")
-    assert tagged.product.tags == frozenset({"new", "promo"})
-    assert record.product.tags == frozenset({"new"})
-    assert remove_tag(tagged, "new").product.tags == frozenset({"promo"})
-    assert add_tag(tagged, "promo") == tagged
-
-
-def test_mappingproxy_is_read_only(record: StockRecord) -> None:
-    """Метадані постачальника доступні лише для читання."""
-    meta: Any = record.supplier
+def test_supplier_is_read_only(record: StockRecord) -> None:
+    supplier: Any = record.supplier
     with pytest.raises(TypeError):
-        meta["name"] = "changed"
+        supplier["name"] = "changed"
+    assert record.supplier["name"] == "TechImport"
 
 
 def test_make_meta_copies_source() -> None:
-    """make_meta копіює джерело, тож зміни dict не видно в proxy."""
-    source = {"name": "TechImport"}
-    meta = make_meta(**source)
-    source["name"] = "changed"
-    assert meta["name"] == "TechImport"
+    raw = {"k": "v"}
+    meta = make_meta(**raw)
+    raw["k"] = "changed"
+    assert meta["k"] == "v"
 
 
-def test_update_supplier_returns_new_meta(record: StockRecord) -> None:
-    """Оновлення постачальника створює нову read-only мапу."""
-    updated = update_supplier(record, city="Lviv")
-    assert updated.supplier["city"] == "Lviv"
-    assert record.supplier["city"] == "Kyiv"
-    assert supplier_name(updated.supplier) == "TechImport"
-    assert supplier_name(make_meta()) == "unknown"
+def test_with_supplier_creates_new_mapping(record: StockRecord) -> None:
+    new = with_supplier(record, city="Lviv", phone="123")
+    assert dict(new.supplier) == {"name": "TechImport", "city": "Lviv", "phone": "123"}
+    assert dict(record.supplier) == {"name": "TechImport", "city": "Kyiv"}
 
 
-def test_hashability(
-    record: StockRecord, fresh_record: Callable[[], StockRecord]
-) -> None:
-    """Product і StockRecord хешовані та придатні як ключі dict/set."""
-    same = restock(ship(record, 2), 2)
-    products = {record.product, change_price(record, 1.0).product}
-    assert len(products) == 2
-    assert hash(record) == hash(fresh_record())
-    assert {record: "ok"}[fresh_record()] == "ok"
-    assert same != record
-    assert len({record, restock(record, 1)}) == 2
+def test_hashability_and_dict_key(record: StockRecord) -> None:
+    other = add_tag(record, "sale")
+    assert len({record, other, add_tag(record, "sale")}) == 2
+    index = index_by_record((record, other))
+    assert index[record] == pytest.approx(10_000.0)
+    assert index[other] == pytest.approx(10_000.0 * 0.8)
+    assert set(index) == {record, other}
 
 
-def test_mappingproxy_itself_is_not_hashable(record: StockRecord) -> None:
-    """Саме поле MappingProxyType не хешується — тому hash=False."""
+def test_stock_value_and_cache(record: StockRecord) -> None:
+    stock_value.cache_clear()
+    assert stock_value(record) == pytest.approx(10 * 1_000.0)
+    stock_value(record)
+    info = stock_value.cache_info()
+    assert info.hits == 1 and info.misses == 1
+    assert stock_value(add_tag(record, "promo")) == pytest.approx(10_000.0 * 0.9)
+
+
+def test_freeze_deep() -> None:
+    frozen = freeze({"a": [1, {2, 3}], "b": {"c": [4]}})
     with pytest.raises(TypeError):
-        hash(record.supplier)
-
-
-def test_index_by_id_and_tags() -> None:
-    """Product індексується за ключем (sku, frozenset тегів)."""
-    product = Product("A1", "Item", 10.0, "misc", frozenset({"x", "y"}))
-    index = {(product.sku, product.tags): product}
-    assert index[("A1", frozenset({"y", "x"}))] is product
-
-
-def test_freeze_deep_structure() -> None:
-    """Функція freeze глибоко заморожує вкладені структури."""
-    frozen = freeze({"a": [1, {"b": {2, 3}}], "c": {"d": [4]}})
-    assert isinstance(frozen, MappingProxyType)
-    assert frozen["a"] == (1, MappingProxyType({"b": frozenset({2, 3})}))
-    assert isinstance(frozen["c"], MappingProxyType)
-    target: Any = frozen
+        frozen["a"] = 0
+    assert frozen["a"] == (1, frozenset({2, 3}))
     with pytest.raises(TypeError):
-        target["a"] = ()
+        frozen["b"]["c"] = 0
+    assert frozen["b"]["c"] == (4,)
 
 
-def test_inventory_functions_return_tuples(
-    records: tuple[StockRecord, ...],
-    fresh_records: Callable[[], tuple[StockRecord, ...]],
-) -> None:
-    """Бізнес-функції повертають tuple і не змінюють вхід."""
-    snapshot = fresh_records()
-    assert total_value(records) == pytest.approx(4000.0 + 2000.0 + 50.0)
-    assert [r.product.sku for r in to_reorder(records)] == ["LAP-01", "TSH-03"]
-    assert [r.product.sku for r in top_valuable(records, 2)] == ["LAP-01", "BOO-02"]
-    assert [r.product.sku for r in with_tag(records, "bestseller")] == ["BOO-02"]
-    assert isinstance(to_reorder(records), tuple)
-    assert records == snapshot
+products_st = st.builds(
+    Product,
+    st.text(min_size=1, max_size=6),
+    st.text(min_size=1, max_size=10),
+    st.floats(min_value=0, max_value=1e5, allow_nan=False),
+)
+records_st = st.builds(
+    make_record,
+    st.integers(min_value=1),
+    products_st,
+    st.tuples(st.integers(0, 100), st.integers(0, 100)),
+    st.frozensets(st.sampled_from(["new", "promo", "sale", "bestseller", "fragile"])),
+)
 
 
-def test_index_by_sku_is_read_only(records: tuple[StockRecord, ...]) -> None:
-    """Індекс за SKU доступний лише для читання."""
-    index = index_by_sku(records)
-    assert index["BOO-02"] is records[1]
-    target: Any = index
-    with pytest.raises(TypeError):
-        target["X"] = records[0]
+@given(records_st, st.integers(min_value=1, max_value=500))
+def test_property_restock_pure(r: StockRecord, amount: int) -> None:
+    before = (r.batches, r.tags, dict(r.supplier))
+    new = r.restock(amount)
+    assert (r.batches, r.tags, dict(r.supplier)) == before
+    assert new.batches == r.batches + (amount,)
+    assert new.quantity() == r.quantity() + amount
 
 
-def test_price_rule_returns_new_records(records: tuple[StockRecord, ...]) -> None:
-    """Правило знижок повертає нові записи."""
-    discounted = apply_price_rule(records, make_category_discount({"books": 0.1}))
-    assert discounted[1].product.price == pytest.approx(180.0)
-    assert records[1].product.price == 200.0
-    assert discounted[0] == records[0]
-    assert discounted is not records
-
-
-def test_reorder_cost_is_cached(
-    record: StockRecord, fresh_record: Callable[[], StockRecord]
-) -> None:
-    """reorder_cost кешується через lru_cache."""
-    reorder_cost.cache_clear()
-    first = reorder_cost(record)
-    second = reorder_cost(fresh_record())
-    info = reorder_cost.cache_info()
-    assert first == second == 6000.0
-    assert info.hits == 1
-    assert info.misses == 1
-
-
-def test_no_mutation_when_adding_tag(
-    record: StockRecord, fresh_record: Callable[[], StockRecord]
-) -> None:
-    """Додавання тегу не змінює оригінал і повертає новий об'єкт."""
-    original = record
-    control = fresh_record()
-    new_record = add_tag(record, "vip")
-    assert record is original
-    assert record == control
-    assert new_record is not record
-    assert "vip" in new_record.product.tags
+@given(records_st)
+def test_property_hash_consistent_with_eq(r: StockRecord) -> None:
+    twin = StockRecord(r.id, r.product, r.batches, r.tags, r.supplier, r.active)
+    assert twin == r and hash(twin) == hash(r)
+    assert stock_value(r) == stock_value(twin)

@@ -1,96 +1,81 @@
-"""Pure-оновлення та бізнес-функції складу: кожна операція повертає новий об'єкт."""
+"""Чисті бізнес-функції над незмінною моделлю складу (варіант 4).
 
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import replace
-from functools import lru_cache, reduce
+Жодна функція не змінює вхідні об'єкти: кожне оновлення повертає новий StockRecord,
+вартість залишку кешується через lru_cache (StockRecord хешований).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from functools import lru_cache
 from types import MappingProxyType
+from typing import Any
 
-from model import Movement, StockRecord, make_meta
+from model import StockRecord, Tag
 
-PriceRule = Callable[[StockRecord], float]
+TAG_DISCOUNTS: Mapping[Tag, float] = MappingProxyType(
+    {"new": 1.0, "promo": 0.9, "sale": 0.8, "bestseller": 1.0, "fragile": 1.0}
+)
+
+
+def discount_factor(tags: frozenset[Tag]) -> float:
+    """Добуток коефіцієнтів знижки всіх тегів (порожня множина → 1.0)."""
+    factor = 1.0
+    for tag in tags:
+        factor *= TAG_DISCOUNTS[tag]
+    return factor
+
+
+@lru_cache(maxsize=1024)
+def stock_value(record: StockRecord) -> float:
+    """Вартість залишку = кількість × ціна × коефіцієнт знижки. Кешується."""
+    return record.quantity() * record.product.price * discount_factor(record.tags)
 
 
 def restock(record: StockRecord, amount: int) -> StockRecord:
-    """Поповнення залишку: новий запис з більшою кількістю та рухом 'restock'."""
-    if amount <= 0:
-        raise ValueError("amount must be positive")
-    return record.with_movement(Movement(amount, "restock"))
+    """Pure update: поповнення залишку новою партією."""
+    return record.restock(amount)
 
 
-def ship(record: StockRecord, amount: int) -> StockRecord:
-    """Відвантаження: новий запис з меншою кількістю та рухом 'ship'."""
-    if amount <= 0 or amount > record.quantity:
-        raise ValueError("invalid shipment amount")
-    return record.with_movement(Movement(-amount, "ship"))
+def change_price(record: StockRecord, price: float) -> StockRecord:
+    """Pure update: новий запис із новою ціною товару."""
+    return record.change_price(price)
 
 
-def change_price(record: StockRecord, new_price: float) -> StockRecord:
-    """Зміна ціни: новий запис з новим Product."""
-    if new_price < 0:
-        raise ValueError("price must be non-negative")
-    return record.with_product(record.product.with_price(new_price))
+def add_tag(record: StockRecord, tag: Tag) -> StockRecord:
+    """Pure update: новий запис із доданим тегом."""
+    return record.add_tag(tag)
 
 
-def add_tag(record: StockRecord, tag: str) -> StockRecord:
-    """Додавання тегу через об'єднання frozenset."""
-    return record.with_product(record.product.with_tag(tag))
+def with_supplier(record: StockRecord, **updates: str) -> StockRecord:
+    """Pure update: новий запис із новою read-only meta постачальника."""
+    merged = {**record.supplier, **updates}
+    return StockRecord(
+        record.id,
+        record.product,
+        record.batches,
+        record.tags,
+        MappingProxyType(merged),
+        record.active,
+    )
 
 
-def remove_tag(record: StockRecord, tag: str) -> StockRecord:
-    """Видалення тегу через різницю frozenset."""
-    return record.with_product(record.product.without_tag(tag))
+def recalculate(record: StockRecord) -> tuple[StockRecord, float]:
+    """Повертає той самий запис і його вартість (кешовану)."""
+    return record, stock_value(record)
 
 
-def update_supplier(record: StockRecord, **changes: str) -> StockRecord:
-    """Оновлення метаданих постачальника: нова read-only мапа."""
-    return replace(record, supplier=make_meta(**{**record.supplier, **changes}))
+def index_by_record(records: tuple[StockRecord, ...]) -> Mapping[StockRecord, float]:
+    """Запис як ключ словника (хешованість frozen dataclass) → вартість залишку."""
+    return MappingProxyType({r: stock_value(r) for r in records})
 
 
-def supplier_name(meta: Mapping[str, str]) -> str:
-    """Назва постачальника з read-only метаданих."""
-    return meta.get("name", "unknown")
-
-
-def total_value(records: Sequence[StockRecord]) -> float:
-    """Загальна вартість складу (reduce)."""
-    return reduce(lambda acc, r: acc + r.stock_value(), records, 0.0)
-
-
-def to_reorder(records: Sequence[StockRecord]) -> tuple[StockRecord, ...]:
-    """Записи, що потребують дозамовлення (новий tuple)."""
-    return tuple(filter(lambda r: r.needs_reorder(), records))
-
-
-def top_valuable(records: Sequence[StockRecord], n: int = 3) -> tuple[StockRecord, ...]:
-    """N записів з найбільшою вартістю залишку."""
-    return tuple(sorted(records, key=lambda r: r.stock_value(), reverse=True)[:n])
-
-
-def with_tag(records: Sequence[StockRecord], tag: str) -> tuple[StockRecord, ...]:
-    """Записи, товар яких має вказаний тег."""
-    return tuple(r for r in records if tag in r.product.tags)
-
-
-def index_by_sku(records: Sequence[StockRecord]) -> Mapping[str, StockRecord]:
-    """Read-only індекс записів за SKU."""
-    return MappingProxyType({r.product.sku: r for r in records})
-
-
-def make_category_discount(rates: Mapping[str, float]) -> PriceRule:
-    """Фабрика правила знижок за категорією (ставки копіюються і заморожуються)."""
-    frozen_rates = MappingProxyType(dict(rates))
-    return lambda r: r.product.price * (1 - frozen_rates.get(r.product.category, 0.0))
-
-
-def apply_price_rule(
-    records: Sequence[StockRecord], rule: PriceRule
-) -> tuple[StockRecord, ...]:
-    """Застосовує правило ціни і повертає НОВИЙ кортеж записів."""
-    return tuple(change_price(r, round(rule(r), 2)) for r in records)
-
-
-@lru_cache(maxsize=256)
-def reorder_cost(record: StockRecord) -> float:
-    """Вартість дозамовлення до подвійного мінімуму (кешується, бо запис хешований)."""
-    missing = max(record.min_quantity * 2 - record.quantity, 0)
-    return round(missing * record.product.price, 2)
+def freeze(obj: Any) -> Any:
+    """Глибоке заморожування: dict → MappingProxyType, set → frozenset, list → tuple."""
+    if isinstance(obj, Mapping):
+        return MappingProxyType({k: freeze(v) for k, v in obj.items()})
+    if isinstance(obj, set | frozenset):
+        return frozenset(freeze(x) for x in obj)
+    if isinstance(obj, list | tuple):
+        return tuple(freeze(x) for x in obj)
+    return obj

@@ -1,105 +1,75 @@
-"""Незмінна модель складу: товар, запис складу, рух товару, read-only метадані."""
+"""Незмінна модель складу товарів (варіант 4).
 
-from collections.abc import Iterable, Mapping
+Product і StockRecord — frozen dataclass зі slots; партії поповнення у tuple,
+теги у frozenset, метадані постачальника — MappingProxyType поверх копії словника.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import Literal, NamedTuple
+from typing import Literal
 
-Category = Literal["electronics", "books", "clothes", "food", "misc"]
-
-
-def make_meta(**kwargs: str) -> Mapping[str, str]:
-    """Створює read-only метадані з КОПІЇ переданих значень."""
-    return MappingProxyType(dict(kwargs))
-
-
-def freeze(obj: object) -> object:
-    """Глибоко заморожує вкладені dict/set/list у MappingProxyType/frozenset/tuple."""
-    if isinstance(obj, Mapping):
-        return MappingProxyType({k: freeze(v) for k, v in obj.items()})
-    if isinstance(obj, set | frozenset):
-        return frozenset(freeze(x) for x in obj)
-    if isinstance(obj, list | tuple):
-        return tuple(freeze(x) for x in obj)
-    return obj
-
-
-class Movement(NamedTuple):
-    """Рух товару: зміна кількості та причина."""
-
-    delta: int
-    reason: str
+Tag = Literal["new", "promo", "sale", "bestseller", "fragile"]
 
 
 @dataclass(frozen=True, slots=True)
 class Product:
-    """Товар: незмінні назва, ціна, категорія та теги (frozenset)."""
+    """Товар: артикул, назва і ціна за одиницю."""
 
     sku: str
     name: str
     price: float
-    category: Category
-    tags: frozenset[str] = frozenset()
 
-    def with_price(self, price: float) -> "Product":
-        """Повертає новий товар з іншою ціною."""
+    def with_price(self, price: float) -> Product:
+        """Новий товар з іншою ціною."""
         return replace(self, price=price)
-
-    def with_tag(self, tag: str) -> "Product":
-        """Повертає новий товар з доданим тегом."""
-        return replace(self, tags=self.tags | frozenset({tag}))
-
-    def without_tag(self, tag: str) -> "Product":
-        """Повертає новий товар без указаного тегу."""
-        return replace(self, tags=self.tags - frozenset({tag}))
 
 
 @dataclass(frozen=True, slots=True)
 class StockRecord:
-    """Запис складу: товар, залишок, історія рухів (tuple), постачальник (read-only)."""
+    """Складський запис: товар, партії (tuple), теги (frozenset), постачальник."""
 
+    id: int
     product: Product
-    quantity: int
-    min_quantity: int
-    movements: tuple[Movement, ...] = ()
-    supplier: Mapping[str, str] = field(default_factory=make_meta, hash=False)
+    batches: tuple[int, ...]
+    tags: frozenset[Tag]
+    supplier: Mapping[str, str] = field(hash=False)
+    active: bool = True
 
-    def stock_value(self) -> float:
-        """Вартість залишку: ціна × кількість."""
-        return self.product.price * self.quantity
+    def quantity(self) -> int:
+        """Залишок на складі — сума всіх партій."""
+        return sum(self.batches)
 
-    def needs_reorder(self) -> bool:
-        """Чи впав залишок нижче мінімального."""
-        return self.quantity < self.min_quantity
+    def restock(self, amount: int) -> StockRecord:
+        """Новий запис із доданою партією поповнення."""
+        return replace(self, batches=self.batches + (amount,))
 
-    def with_movement(self, movement: Movement) -> "StockRecord":
-        """Повертає новий запис із застосованим рухом товару."""
-        return replace(
-            self,
-            quantity=self.quantity + movement.delta,
-            movements=self.movements + (movement,),
-        )
+    def change_price(self, price: float) -> StockRecord:
+        """Новий запис із новою ціною товару."""
+        return replace(self, product=self.product.with_price(price))
 
-    def with_product(self, product: Product) -> "StockRecord":
-        """Повертає новий запис з оновленим товаром."""
-        return replace(self, product=product)
+    def add_tag(self, tag: Tag) -> StockRecord:
+        """Новий запис із доданим тегом."""
+        return replace(self, tags=self.tags | frozenset({tag}))
+
+    def deactivate(self) -> StockRecord:
+        """Новий запис, знятий з продажу."""
+        return replace(self, active=False)
+
+
+def make_meta(**kwargs: str) -> Mapping[str, str]:
+    """Read-only view над КОПІЄЮ словника, щоб ніхто не тримав посилання на оригінал."""
+    return MappingProxyType(dict(kwargs))
 
 
 def make_record(
-    *,
-    sku: str,
-    name: str,
-    price: float,
-    category: Category,
-    quantity: int,
-    min_quantity: int,
-    tags: Iterable[str] = (),
-    supplier: Mapping[str, str] | None = None,
+    id: int,
+    product: Product,
+    batches: tuple[int, ...] = (),
+    tags: frozenset[Tag] = frozenset(),
+    **supplier: str,
 ) -> StockRecord:
-    """Будує незмінний запис складу зі звичайних значень (list/dict копіюються)."""
-    return StockRecord(
-        product=Product(sku, name, price, category, frozenset(tags)),
-        quantity=quantity,
-        min_quantity=min_quantity,
-        supplier=make_meta(**dict(supplier or {})),
-    )
+    """Зручний конструктор складського запису з read-only метаданими постачальника."""
+    return StockRecord(id, product, batches, tags, make_meta(**supplier))

@@ -1,92 +1,65 @@
-# Лабораторна робота №3. Нездатні до змін структури даних (immutability) у Python
+# Лабораторна робота №3. Нездатні до змін структури даних (immutability)
 
-**Виконав:** Данилюк Андрій Андрійович, група ФЕП-23с
-**Перевірив:** Свелеба Сергій Андрійович
-**Варіант:** 4 — «Склад товарів»
-
-## Опис варіанта
-
-**Предметна область:** склад товарів.
-**Незмінна модель:** `Product`, `StockRecord`, теги (`frozenset`), метадані постачальника (`MappingProxyType`).
-**Pure-оновлення:** поповнення залишку, відвантаження, зміна ціни, додавання/видалення тегу, оновлення постачальника.
-**Що перевірити:** кожна операція повертає новий `StockRecord`, старий не змінюється.
+**Варіант 4 — склад товарів.** Сутності `Product` і `StockRecord`, теги як `frozenset`,
+метадані постачальника як `MappingProxyType`. Pure-оновлення: поповнення залишку, зміна ціни,
+додавання тегу; кожна операція повертає новий `StockRecord`. Один розрахунок (`stock_value`)
+кешується через `lru_cache`.
+Виконав: Данилюк Андрій Андрійович, ФЕП-23с. Перевірив: Свелеба Сергій Андрійович.
 
 ## Цілі
 
-- застосувати `tuple`, `frozenset`, `@dataclass(frozen=True, slots=True)`, `NamedTuple`, `MappingProxyType`;
-- замінити мутації на pure updates (`dataclasses.replace`, конкатенація `tuple`, операції `frozenset`);
-- виміряти ефект переходу на незмінні структури (`pytest --durations=5`, вимірювання `perf_counter`).
+- застосувати `tuple`, `frozenset`, `@dataclass(frozen=True, slots=True)`, `MappingProxyType`;
+- замінити мутації на повернення нових копій (`dataclasses.replace`, конкатенація tuple, `|` для frozenset);
+- перевірити немутацію, read-only поведінку та хешованість тестами;
+- виміряти ефект переходу на незмінну модель (`pytest --durations=5`).
 
 ## Що зроблено
 
 | Файл | Призначення |
 |---|---|
-| `model.py` | `Movement` (`NamedTuple`), `Category` (`Literal`), `Product` і `StockRecord` (`frozen=True, slots=True`) з методами pure-оновлення `with_price`, `with_tag`, `without_tag`, `with_movement`, `with_product` (`dataclasses.replace`), `make_meta` (копія + `MappingProxyType`), `freeze` — глибоке заморожування |
-| `core.py` | pure-оновлення `restock`, `ship`, `change_price`, `add_tag`, `remove_tag`, `update_supplier`; бізнес-функції `total_value`, `to_reorder`, `top_valuable`, `with_tag`, `index_by_sku`; правило знижок `make_category_discount` + `apply_price_rule`; `reorder_cost` з `lru_cache` |
-| `mutable_model.py` | «стара» мутабельна версія (dict/list/set) — лише для порівняння часу |
-| `app.py` | оболонка I/O: читає `warehouse.json`, виконує оновлення, друкує таблиці |
-| `tests/test_immutability.py` | `test_no_mutation_*`, `test_hashability`, `test_mappingproxy_is_read_only`, `FrozenInstanceError`, `freeze`, `lru_cache` |
-| `tests/test_properties.py` | property-based тести (Hypothesis): чистота `restock`/`change_price`, ідемпотентність `add_tag` і `freeze`, `hash` узгоджений з `==` |
-| `tests/test_performance.py` | порівняння часу до/після (`perf_counter`, без плагінів): мутабельна і незмінна модель, `reorder_cost` з кешем і без |
+| `model.py` | `Product`, `StockRecord` (frozen, slots), `Tag = Literal[...]`, `make_meta` (proxy над копією), `make_record`. Методи `restock` / `change_price` / `add_tag` / `deactivate` повертають нові об'єкти через `replace`. |
+| `core.py` | Чисті функції: `discount_factor`, `stock_value` (`@lru_cache`), pure-оновлення `restock`, `change_price`, `add_tag`, `with_supplier`, `recalculate`, `index_by_record` (запис як ключ словника), `freeze` (глибоке заморожування). |
+| `mutable_model.py` | Мутабельна версія «до» (dict + list + set) — лише для порівняння часу. |
+| `main.py` | Демонстрація: ланцюжок оновлень, незмінність оригіналу, кеш, read-only meta. |
+| `tests/test_immutability.py` | Немутація, `FrozenInstanceError`, `TypeError` для proxy, копіювання джерела meta, хешованість і словник з ключем-записом, кеш `cache_info`, `freeze`, 2 property-тести (Hypothesis). |
+| `tests/test_performance.py` | Два тести однакового навантаження на mutable- і immutable-моделі для `--durations=5`. |
+| `conftest.py` | Фікстура `record`. |
+| `report/Lab_03.docx` | Звіт. |
 
-**Хешованість.** `Product` хешований повністю. `StockRecord` теж хешований: поле `supplier`
-(`MappingProxyType`) саме по собі не хешується, тому воно виключене з хешу через
-`field(hash=False)`, але бере участь у порівнянні `==`. Це перевіряють тести, а `StockRecord`
-використовується як ключ `lru_cache`.
+### Хешованість
 
-## Структура програми
+`StockRecord` хешований завдяки `frozen=True`, але поле `supplier` (`mappingproxy`) не має
+`__hash__`, тому воно виключене з хешу через `field(hash=False)` і бере участь лише у `__eq__`.
+Усі інші поля (`Product`, `tuple`, `frozenset`, примітиви) хешуються.
 
-```
-Lab_03/
-  README.md
-  model.py
-  core.py
-  mutable_model.py
-  app.py
-  warehouse.json
-  tests/conftest.py
-  tests/test_immutability.py
-  tests/test_properties.py
-  tests/test_performance.py
-  requirements.txt
-  pyproject.toml
-  mypy.ini
-  report/Lab_03.docx
-```
+## Порівняння часу (`python -m pytest -q --durations=5 -vv tests/test_performance.py`)
 
-## Команди запуску
+| Тест | Модель | Час |
+|---|---|---|
+| `test_mutable_before` | dict + list + set, вартість щоразу перераховується | ~0.05 s |
+| `test_immutable_after` | frozen dataclass + tuple + `lru_cache` | ~0.01 s |
+
+Незмінна модель на 2000 поповненнях створює 2000 нових tuple (O(n²) копіювання), але
+кешований розрахунок вартості компенсує це: 1999 звернень із 2000 — cache hit.
+
+## Висновок про незмінність
+
+Переваги: референтна прозорість і прості тести без `deepcopy`, безпечне спільне читання,
+хешованість (запис як ключ `dict`, вхід `lru_cache`). Накладні витрати: кожне оновлення
+створює новий об'єкт і копіює tuple/frozenset, `MappingProxyType` захищає лише верхній рівень
+(для вкладених структур потрібен `freeze`). Для складських записів ці витрати несуттєві,
+а виграш у передбачуваності — великий.
+
+## Як запускати
 
 ```bash
 pip install -r requirements.txt
-python app.py
-python -m pytest
-python -m pytest --durations=5
-python -m pytest -q -s tests/test_performance.py
-python -m mypy
-python -m black --check .
-python -m ruff check .
+python main.py
+
+pytest -q --durations=5
+mypy .
+ruff check .
+black --check .
 ```
 
-## Вимірювання
-
-`tests/test_performance.py` (найкращий з 5 запусків, 2000 операцій «поповнення + зміна ціни + тег»):
-
-| Тест | Час |
-|---|---|
-| до: мутабельна модель (`dict`/`list`/`set`, in-place) | ≈ 0.6 мс |
-| після: незмінна модель (`frozen dataclass`, `tuple`, `frozenset`) | ≈ 19 мс |
-| 10 000 викликів `reorder_cost` без кешу | ≈ 3.2 мс |
-| 10 000 викликів `reorder_cost` з `lru_cache` | ≈ 2.4 мс |
-
-`pytest --durations=5`: найдовші — тести вимірювання часу (до 0.15 с), решта < 0.005 с;
-увесь набір із 29 тестів проходить менш ніж за 1 с.
-
-## Висновок
-
-Незмінна модель усунула цілий клас помилок: оновлення не можуть випадково зіпсувати чужі дані,
-тести стабільні (той самий вхід — той самий результат), записи хешовані й придатні як ключі
-`dict`/`set` і для `lru_cache`. Ціна — накладні витрати на створення копій: на 2000 послідовних
-оновлень незмінна версія приблизно в 30 разів повільніша, головно через конкатенацію кортежу
-історії рухів (кожне оновлення копіює весь `tuple`). Для типових обсягів складу це мілісекунди,
-тож виграш у надійності переважає; для дуже довгих історій варто зберігати їх окремо або
-використовувати персистентні структури.
+Усі команди виконуються з каталогу `Lab_03/`.

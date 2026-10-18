@@ -27,8 +27,8 @@ jobs:
       - name: Black
         run: black --check .
       - name: Mypy
-        run: mypy
+        run: mypy .
       - name: Pytest
         run: pytest -v
       - name: Run app
-        run: python app.py
+        run: if [ -f app.py ]; then python app.py; else python main.py; fi
