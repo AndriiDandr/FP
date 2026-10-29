@@ -7,6 +7,7 @@
 
 from collections.abc import Iterable, Mapping
 from functools import reduce
+from types import MappingProxyType
 from typing import Callable, TypedDict
 
 
@@ -44,11 +45,14 @@ class Receipt(TypedDict):
     total: float
 
 
+SubtotalFn = Callable[[float], float]
+DiscountFn = Callable[[float], float]
+TaxFn = Callable[[float], float]
+FilterFn = Callable[[float], bool]
+NowFn = Callable[[], float]
 ItemFilterFn = Callable[[Item], bool]
 CategoryDiscountFn = Callable[[Item], float]
-CouponFn = Callable[[float], float]
-TaxFn = Callable[[float], float]
-NowFn = Callable[[], float]
+CouponFn = SubtotalFn
 CartProcessor = Callable[[Iterable[Item]], Receipt]
 
 
@@ -72,9 +76,9 @@ def line_total(item: Item) -> float:
     return item["price"] * item["qty"]
 
 
-def cart_subtotal(items: Iterable[Item]) -> float:
-    """Сума всіх позицій кошика без знижок і податків."""
-    return reduce(lambda acc, it: acc + line_total(it), items, 0.0)
+def cart_subtotal(cart: Iterable[Item]) -> float:
+    """Сума всіх позицій кошика (cart) без знижок і податків."""
+    return reduce(lambda acc, it: acc + line_total(it), cart, 0.0)
 
 
 def price_item(item: Item, discount_rate: float) -> PricedItem:
@@ -101,24 +105,24 @@ def with_price(item: Item, price: float) -> Item:
     return {**item, "price": price}
 
 
-def without_category(items: Iterable[Item], category: str) -> list[Item]:
-    """Повертає новий список без товарів заданої категорії."""
-    return list(filter(lambda it: it["category"] != category, items))
+def without_category(cart: Iterable[Item], category: str) -> list[Item]:
+    """Повертає новий кошик (cart) без товарів заданої категорії."""
+    return list(filter(lambda it: it["category"] != category, cart))
 
 
-def scale_prices(items: Iterable[Item], k: float) -> list[Item]:
-    """Повертає новий список товарів з ціною, помноженою на k."""
+def scale_prices(cart: Iterable[Item], k: float) -> list[Item]:
+    """Повертає новий кошик (cart) з ціною товарів, помноженою на k."""
 
     def scaled(it: Item) -> Item:
         """Копія товару з помноженою ціною."""
         return with_price(it, it["price"] * k)
 
-    return list(map(scaled, items))
+    return list(map(scaled, cart))
 
 
 def make_category_discount(rates: Mapping[str, float]) -> CategoryDiscountFn:
     """Фабрика політики знижки: ставка залежить від категорії товару."""
-    frozen = dict(rates)
+    frozen = MappingProxyType(dict(rates))
     return lambda item: frozen.get(item["category"], 0.0)
 
 
@@ -163,9 +167,9 @@ def make_cart_processor(
 ) -> CartProcessor:
     """Функція вищого порядку: збирає обробник кошика з переданих політик."""
 
-    def process(items: Iterable[Item]) -> Receipt:
-        """Повертає новий чек для кошика, не змінюючи вхідні товари."""
-        priced = [price_item(it, category_discount(it)) for it in items if accept(it)]
+    def process(cart: Iterable[Item]) -> Receipt:
+        """Повертає новий чек для кошика (cart), не змінюючи вхідні товари."""
+        priced = [price_item(it, category_discount(it)) for it in cart if accept(it)]
         subtotal = sum(p["line_total"] for p in priced)
         after_category = sum(p["discounted_total"] for p in priced)
         after_coupon = apply_coupon(after_category)
@@ -185,7 +189,7 @@ def make_cart_processor(
 
 
 def process_cart_pure(
-    items: Iterable[Item],
+    cart: Iterable[Item],
     *,
     category_rates: Mapping[str, float],
     coupon_percent: float,
@@ -198,7 +202,7 @@ def process_cart_pure(
         apply_coupon=make_percent_coupon(coupon_percent),
         apply_tax=make_vat(vat_rate),
     )
-    return processor(items)
+    return processor(cart)
 
 
 class OrderItem(TypedDict):
@@ -217,8 +221,6 @@ class Order(TypedDict, total=False):
     total: float
 
 
-FilterFn = Callable[[float], bool]
-DiscountFn = Callable[[float], float]
 OrdersProcessor = Callable[[Iterable[Order]], dict[str, object]]
 
 
@@ -237,17 +239,19 @@ def make_processor(
     accept: FilterFn,
     apply_discount: DiscountFn,
     apply_tax: TaxFn,
+    adjust_subtotal: SubtotalFn = identity,
 ) -> OrdersProcessor:
-    """Функція вищого порядку для замовлень: політики передаються як Callable."""
+    """Функція вищого порядку для замовлень: політики передаються як Callable.
+
+    ``adjust_subtotal`` (SubtotalFn) дозволяє вставити купон до знижки й податку.
+    """
+    pipeline = compose(apply_tax, compose(apply_discount, adjust_subtotal))
 
     def process(orders: Iterable[Order]) -> dict[str, object]:
         """Відбирає оплачені замовлення і рахує нові записи з total."""
-        paid = [o for o in orders if o["paid"]]
-        accepted = [o for o in paid if accept(order_subtotal(o))]
-        qualified = [
-            with_total(o, apply_tax(apply_discount(order_subtotal(o))))
-            for o in accepted
-        ]
+        paid = filter(lambda o: o["paid"], orders)
+        accepted = filter(lambda o: accept(order_subtotal(o)), paid)
+        qualified = [with_total(o, pipeline(order_subtotal(o))) for o in accepted]
         revenue = sum(o["total"] for o in qualified)
         return {"count": len(qualified), "revenue": revenue, "orders": qualified}
 

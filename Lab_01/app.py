@@ -1,4 +1,4 @@
-"""Оболонка побічних ефектів: читання кошика, час і друк звіту.
+"""Оболонка побічних ефектів: читання кошика (cart), час і друк звіту.
 
 Усі обчислення делегуються чистому ядру ``core``; тут лише I/O.
 """
@@ -11,6 +11,8 @@ from pathlib import Path
 
 from core import (
     Item,
+    NowFn,
+    Order,
     Receipt,
     accept_positive_qty,
     compose,
@@ -20,18 +22,19 @@ from core import (
     make_fixed_coupon,
     make_percent_coupon,
     make_vat,
+    process_orders_pure,
     stamp_total,
 )
 
 
 def load_cart(path: Path) -> list[Item]:
-    """Читає кошик із JSON-файлу."""
+    """Читає кошик (cart) із JSON-файлу."""
     with path.open(encoding="utf-8") as f:
         data: list[Item] = json.load(f)
     return data
 
 
-def render_report(receipt: Receipt, stamped_at: float) -> str:
+def format_report(receipt: Receipt, stamped_at: float) -> str:
     """Формує текст чека з готового результату (без друку)."""
     header = (
         f"{'Товар':<22}{'Категорія':<13}{'Ціна':>9}{'К-сть':>7}"
@@ -56,6 +59,12 @@ def render_report(receipt: Receipt, stamped_at: float) -> str:
     return "\n".join([header, separator, *rows, separator, *totals])
 
 
+def render_report(result: Receipt, now: NowFn = time.time) -> None:
+    """Оболонка: лише споживає чистий результат і друкує звіт."""
+    _, stamped_at = stamp_total(result["total"], now)
+    print(format_report(result, stamped_at))
+
+
 def run(
     cart: list[Item],
     *,
@@ -70,10 +79,8 @@ def run(
         apply_coupon=make_percent_coupon(coupon_percent),
         apply_tax=make_vat(vat_rate),
     )
-    receipt = processor(cart)
-    _, stamped_at = stamp_total(receipt["total"], time.time)
     print(f"=== Кошик: купон {coupon_percent:g}%, ПДВ {vat_rate:.0%} ===")
-    print(render_report(receipt, stamped_at))
+    render_report(processor(cart))
 
     combo_coupon = compose(
         make_fixed_coupon(100, min_amount=1000),
@@ -87,7 +94,24 @@ def run(
     )
     print()
     print("=== Інша політика: без food, купон 5% + 100 грн від 1000 грн ===")
-    print(render_report(alt(cart), stamped_at))
+    render_report(alt(cart))
+
+
+def load_orders(path: Path) -> list[Order]:
+    """Читає замовлення базового завдання з JSON-файлу."""
+    with path.open(encoding="utf-8") as f:
+        data: list[Order] = json.load(f)
+    return data
+
+
+def run_orders(orders: list[Order]) -> None:
+    """Оболонка базового завдання: чистий розрахунок + друк результату."""
+    result = process_orders_pure(orders, min_total=100, discount=0.1, tax_rate=0.2)
+    processed, revenue = result["orders"], result["revenue"]
+    assert isinstance(processed, list) and isinstance(revenue, int | float)
+    for o in processed:
+        print("Processed:", o["id"], "total:", round(o["total"], 2))
+    print("Revenue:", round(revenue, 2))
 
 
 def main() -> None:
@@ -102,6 +126,9 @@ def main() -> None:
         coupon_percent=10,
         vat_rate=0.20,
     )
+    print()
+    print("=== Базове завдання: замовлення ===")
+    run_orders(load_orders(Path(__file__).with_name("orders.json")))
 
 
 if __name__ == "__main__":

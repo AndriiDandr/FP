@@ -1,4 +1,4 @@
-# Лабораторна робота №1. Основи функціонального програмування у Python
+# Лабораторна робота №1. 
 
 **Виконав:** Данилюк Андрій Андрійович, група ФЕП-23с
 **Перевірив:** Свелеба Сергій Андрійович
@@ -44,14 +44,14 @@ Lab_01/
 | Функція | Що робить |
 |---|---|
 | `line_total(item)` | ціна × кількість |
-| `cart_subtotal(items)` | сума всіх позицій (`reduce`) |
+| `cart_subtotal(cart)` | сума всіх позицій (`reduce`) |
 | `price_item(item, rate)` | **новий** запис позиції з `line_total`, `discount_rate`, `discounted_total` |
 | `with_qty`, `with_price`, `without_category`, `scale_prices` | повертають нові об'єкти / списки (`map`, `filter`) |
 | `make_category_discount(rates)` | фабрика політики знижки за категорією (`Callable[[Item], float]`) |
 | `make_percent_coupon(p)`, `make_fixed_coupon(v, min)` | фабрики купонів (`Callable[[float], float]`) |
 | `make_vat(rate)` | фабрика політики ПДВ (`Callable[[float], float]`) |
 | `make_cart_processor(accept=, category_discount=, apply_coupon=, apply_tax=)` | функція вищого порядку: повертає налаштований обробник кошика |
-| `process_cart_pure(items, *, category_rates, coupon_percent, vat_rate)` | чистий розрахунок з явними параметрами |
+| `process_cart_pure(cart, *, category_rates, coupon_percent, vat_rate)` | чистий розрахунок з явними параметрами |
 | `order_subtotal`, `with_total`, `make_processor`, `process_orders_pure` | базове завдання: замовлення |
 | `compose(f, g)`, `make_multiplier(k)`, `identity` | додаткові вправи |
 | `stamp_total(total, now)` | час передається ззовні через `Callable[[], float]` |
@@ -73,4 +73,3 @@ python -m black --check .
 python -m ruff check .
 ```
 
-Результат: 24 тести пройдено (з них 3 property-based), mypy (strict) — без помилок, black і ruff — чисто.
