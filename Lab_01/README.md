@@ -27,6 +27,7 @@
 ```
 Lab_01/
   README.md            опис варіанта, структура, команди запуску
+  main.py              точка входу (викликає app.main)
   core.py              чисте ядро (без I/O, глобалів і мутацій)
   app.py               оболонка I/O: читання cart.json, час, print
   cart.json            приклад кошика
@@ -36,7 +37,7 @@ Lab_01/
   tests/test_properties.py property-based тести (Hypothesis)
   requirements.txt     pytest, hypothesis, mypy, black, ruff
   pyproject.toml       налаштування ruff / mypy / pytest
-  report/Lab_01.docx   звіт
+  report/Lab_01.pdf    звіт
 ```
 
 ### Чисті функції (`core.py`)
@@ -60,6 +61,7 @@ Lab_01/
 
 ```bash
 pip install -r requirements.txt
+python main.py
 python app.py
 python app.py my_cart.json
 ```

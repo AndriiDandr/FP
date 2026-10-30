@@ -4,7 +4,7 @@ ignore = ["D203", "D213", "UP035"]
 
 [tool.mypy]
 strict = true
-files = ["core.py", "app.py", "starter_imperative.py", "tests"]
+files = ["main.py", "core.py", "app.py", "starter_imperative.py", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
